@@ -61,6 +61,7 @@ _CHECKPOINT_FOR_DOC = "FacebookAI/roberta-base"
 _CONFIG_FOR_DOC = "RobertaConfig"
 
 
+# ===================================================================================
 class RobertaEmbeddings(nn.Module):
     """
     Same as BertEmbeddings with a tiny tweak for positional embeddings indexing.
@@ -114,9 +115,14 @@ class RobertaEmbeddings(nn.Module):
             if input_ids is not None:
                 # Create the position ids from the input token ids. Any padded tokens remain padded.
                 position_ids = create_position_ids_from_input_ids(input_ids, self.padding_idx, past_key_values_length)
+            # ===================================================================================
             else:
+                # create position embedding directly by given input_embedding.
                 position_ids = self.create_position_ids_from_inputs_embeds(inputs_embeds)
+            # ===================================================================================
 
+        # input_ids => 2-dim(batch, length)
+        # inputs_embeds => 3-dim(batch, length, dim)
         if input_ids is not None:
             input_shape = input_ids.size()
         else:
@@ -127,6 +133,9 @@ class RobertaEmbeddings(nn.Module):
         # Setting the token_type_ids to the registered buffer in constructor where it is all zeros, which usually occurs
         # when its auto-generated, registered buffer helps users when tracing the model without passing token_type_ids, solves
         # issue #5664
+
+        # ===================================================================================
+        # RoBERTa does not use token_type_ids. so it assigns all element as zero.
         if token_type_ids is None:
             if hasattr(self, "token_type_ids"):
                 buffered_token_type_ids = self.token_type_ids[:, :seq_length]
@@ -134,17 +143,22 @@ class RobertaEmbeddings(nn.Module):
                 token_type_ids = buffered_token_type_ids_expanded
             else:
                 token_type_ids = torch.zeros(input_shape, dtype=torch.long, device=self.position_ids.device)
+        # ===================================================================================
 
+        # make embedding vector with input_ids
         if inputs_embeds is None:
             inputs_embeds = self.word_embeddings(input_ids)
         token_type_embeddings = self.token_type_embeddings(token_type_ids)
 
+        # do summation input and token(segment)
         embeddings = inputs_embeds + token_type_embeddings
         if self.position_embedding_type == "absolute":
             position_embeddings = self.position_embeddings(position_ids)
+        # do summation input and token and position
             embeddings += position_embeddings
         embeddings = self.LayerNorm(embeddings)
         embeddings = self.dropout(embeddings)
+        # after Normalization, Dropout, which is Final Result, return it
         return embeddings
 
 
@@ -157,13 +171,19 @@ class RobertaEmbeddings(nn.Module):
 
         Returns: torch.Tensor
         """
+        # take [batch_size, length_size] tensor(2d)
         input_shape = inputs_embeds.size()[:-1]
+        # take length
         sequence_length = input_shape[1]
 
+        # take tensor that [padding_idx+1,...,padding_idx+length+1]
         position_ids = torch.arange(
             self.padding_idx + 1, sequence_length + self.padding_idx + 1, dtype=torch.long, device=inputs_embeds.device
         )
+        # torch.unsqueeze(0) : insert dimension into 0 index(make it as 2-dim tensor)
+        # torch.expand([a1,a2]) : expand its value according to given argument's size
         return position_ids.unsqueeze(0).expand(input_shape)
+# ===================================================================================
 
 
 # Copied from transformers.models.bert.modeling_bert.BertSelfAttention with Bert->Roberta
@@ -1706,7 +1726,7 @@ def create_position_ids_from_input_ids(input_ids, padding_idx, past_key_values_l
     # torch.Tensor.type_as : Return casted type
     # by cumulative summation, we can set the position as increasing array. e.g. [1,2,3,4,...]
     incremental_indices = (torch.cumsum(mask, dim=1).type_as(mask) + past_key_values_length) * mask
-    return incremental_indices.long() + padding_idx
+    return incremental_indices.long() + padding_idx # result will be [a+1, a+2, a+3, a+4, ...], a is padding_idx.
     #===============================================================================
 
 
