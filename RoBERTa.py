@@ -190,14 +190,20 @@ class RobertaEmbeddings(nn.Module):
 class RobertaSelfAttention(nn.Module):
     def __init__(self, config, position_embedding_type=None):
         super().__init__()
+
+        # ===================================================================================
+        # attention heads must have dimension that must be a hidden dimension by multiply.
+        # hasattr(class, "properties") => check whether the class has properties
         if config.hidden_size % config.num_attention_heads != 0 and not hasattr(config, "embedding_size"):
             raise ValueError(
                 f"The hidden size ({config.hidden_size}) is not a multiple of the number of attention "
                 f"heads ({config.num_attention_heads})"
             )
+        # ===================================================================================
 
         self.num_attention_heads = config.num_attention_heads
         self.attention_head_size = int(config.hidden_size / config.num_attention_heads)
+        # all_head_size equal to config.hidden_size
         self.all_head_size = self.num_attention_heads * self.attention_head_size
 
         self.query = nn.Linear(config.hidden_size, self.all_head_size)
@@ -214,10 +220,17 @@ class RobertaSelfAttention(nn.Module):
 
         self.is_decoder = config.is_decoder
 
+    # ===================================================================================
     def transpose_for_scores(self, x: torch.Tensor) -> torch.Tensor:
+        # (batch, length) of given x + (number of attention head, attention head size)
+        # => (batch, length, number of attention head, attention head size)
+        # it is not addition but 'concatenation'.
         new_x_shape = x.size()[:-1] + (self.num_attention_heads, self.attention_head_size)
+        # torch.view : returns a new tensor with same data but different shape
+        # torch.permute : change axis order
         x = x.view(new_x_shape)
-        return x.permute(0, 2, 1, 3)
+        return x.permute(0, 2, 1, 3) # (batch, attention head, length, attention head size)
+    # ===================================================================================
 
     def forward(
         self,
